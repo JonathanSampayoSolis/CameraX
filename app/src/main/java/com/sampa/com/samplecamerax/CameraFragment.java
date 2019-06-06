@@ -4,6 +4,8 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.graphics.Matrix;
 import android.os.Bundle;
+import android.os.Environment;
+import android.util.Log;
 import android.util.Rational;
 import android.util.Size;
 import android.view.LayoutInflater;
@@ -11,10 +13,13 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.camera.core.CameraX;
+import androidx.camera.core.ImageCapture;
+import androidx.camera.core.ImageCaptureConfig;
 import androidx.camera.core.Preview;
 import androidx.camera.core.PreviewConfig;
 import androidx.core.app.ActivityCompat;
@@ -23,27 +28,21 @@ import androidx.fragment.app.Fragment;
 
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
 
+import java.io.File;
 import java.util.Objects;
+import java.util.UUID;
 
 public class CameraFragment extends Fragment {
 	
-	private CameraFragmentArgs args;
+	private static final String TAG = CameraFragment.class.getSimpleName().toUpperCase();
 	
 	private final int REQUEST_CODE_PERMISSIONS = 10;
 	
-	private final String[] REQUIRED_PERMISSIONS = new String[]{Manifest.permission.CAMERA};
+	private final String[] REQUIRED_PERMISSIONS = new String[]{Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE};
 	
 	private TextureView textureViewViewFinder;
 	
 	private ExtendedFloatingActionButton fabTakePicture;
-	
-	@Override
-	public void onCreate(@Nullable Bundle savedInstanceState) {
-		super.onCreate(savedInstanceState);
-		
-		if (getArguments() != null)
-			args = CameraFragmentArgs.fromBundle(getArguments());
-	}
 	
 	@Nullable
 	@Override
@@ -63,8 +62,6 @@ public class CameraFragment extends Fragment {
 		}
 		
 		textureViewViewFinder.addOnLayoutChangeListener((view1, i, i1, i2, i3, i4, i5, i6, i7) -> updateTransform());
-		
-		
 	}
 	
 	@Override
@@ -81,7 +78,6 @@ public class CameraFragment extends Fragment {
 	private void startCamera() {
 		PreviewConfig previewConfig = new PreviewConfig.Builder()
 				.setTargetAspectRatio(new Rational(1, 1))
-				.setTargetResolution(new Size(340, 340))
 				.build();
 		
 		Preview preview = new Preview(previewConfig);
@@ -96,7 +92,44 @@ public class CameraFragment extends Fragment {
 			updateTransform();
 		});
 		
-		CameraX.bindToLifecycle(getViewLifecycleOwner(), preview);
+		ImageCaptureConfig captureConfig = new ImageCaptureConfig.Builder()
+				.setTargetAspectRatio(new Rational(1, 1))
+				.setCaptureMode(ImageCapture.CaptureMode.MIN_LATENCY)
+				.build();
+		
+		ImageCapture capture = new ImageCapture(captureConfig);
+		
+		fabTakePicture.setOnClickListener(v -> {
+			File folder = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) +
+					"/".concat(getString(R.string.app_name)));
+			
+			if (!folder.exists())
+				//noinspection ResultOfMethodCallIgnored
+				folder.mkdir();
+			
+			File file = new File(folder, UUID.randomUUID().toString().concat(".jpg"));
+			
+			capture.takePicture(file, new ImageCapture.OnImageSavedListener() {
+				@Override
+				public void onImageSaved(@NonNull File file) {
+					Toast.makeText(getContext(), "Picture saved successfully!", Toast.LENGTH_SHORT).show();
+				}
+				
+				@Override
+				public void onError(@NonNull ImageCapture.UseCaseError useCaseError, @NonNull String message, @Nullable Throwable cause) {
+					Toast.makeText(getContext(), "Picture didn't save, check logs!", Toast.LENGTH_SHORT).show();
+					
+					Log.e(TAG, "UseCaseError: " + useCaseError.toString() +
+							"\n message: " + message);
+					
+					if (cause != null)
+						cause.printStackTrace();
+					
+				}
+			});
+		});
+		
+		CameraX.bindToLifecycle(getViewLifecycleOwner(), preview, capture);
 	}
 	
 	private void updateTransform() {
